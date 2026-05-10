@@ -31,13 +31,23 @@ graph TD
 
 一次完整的“上传 -> 构建 -> 整合 -> 问答”数据流如下：
 
-1. **文本输入层**：用户上传 PDF/MD，`ParserService` 利用正则表达式和格式清洗技术，将文档转化为结构化的 `Chapter` 对象并落盘。
-2. **知识提取层**：`GraphBuilderService` 遍历章节，通过严格的 5-8 个节点限制的 Prompt 指导 LLM 提取“骨架级”概念，结果反序列化为 `KnowledgeNode` 和 `KnowledgeEdge`。
-3. **跨域合并层**：`MergerService` 不直接让 LLM 去大海捞针，而是先用 Sentence-Transformer 将所有节点转为 Embedding 向量。通过余弦相似度计算，将高相似节点圈成“组”，再生成合并决策。
-4. **人在回路（Human-in-the-loop）**：`ChatService` 负责与教师交互。当教师要求分离概念时，它会将自然语言转换为严格的 JSON 指令，直接修改 `MergerService` 生成的决策表，并重新触发图谱渲染。
+1. **文本输入层**：用户上传 PDF/MD，`ParserService` 利用正则表达式和结构化清洗技术，将文档转化为结构化的 `Chapter` 对象并落盘。
+2. **知识提取层**：`GraphBuilderService` 遍历章节，通过专门设计的架构师级 Prompt 指导 LLM 提取知识点。
+3. **跨域合并层**：`MergerService` 使用 Sentence-Transformer 计算 Embedding 向量，通过余弦相似度进行聚类，再生成合并决策。
+4. **人在回路（Human-in-the-loop）**：`ChatService` 负责与教师交互，将自然语言指令转换为决策修改逻辑。
 5. **RAG 问答层**：`RAGService` 对原始文档分块向量化存入 ChromaDB，并在回答时引用具体出处。
 
-## 4. 取舍与权衡 (Trade-offs)
+## 4. Prompt 工程与提取粒度优化 (核心竞争力)
+
+
+针对大部头教材（如 500+ 页 PDF）导致图谱节点爆炸的问题，我们对知识提取 Prompt 进行了三轮迭代，实现了“骨架级”提炼：
+
+1. **极端控量策略 (Resource Scarcity)**：在 Prompt 中明确定义“名额稀缺”概念，强制 AI 每章节仅提取 3-5 个最重要的“脊柱”知识点。这有效避免了图谱沦为“名词解释大全”，确保了宏观结构的清晰。
+2. **高质量属性约束 (Metadata Richness)**：严格要求每个节点必须附带 `definition`（定义）、`category`（分类）和 `page`（溯源页码）。通过 Pydantic 校验和 Prompt 强引导，解决了 AI 偷懒导致字段缺失的问题，确保点击节点时侧边栏内容充实。
+3. **启发式章节过滤**：在调用 LLM 前，通过 `skip_keywords` 预过滤目录、附录、编委名单等非核心内容，并针对 PDF 常见的“页眉重复切章”问题设计了模糊对比算法，大幅节省了 Token 消耗并提升了提取质量。
+
+## 5. 取舍与权衡 (Trade-offs)
+
 
 ### 放弃的方案：
 - **放弃 Neo4j 数据库**：为了降低部署门槛，满足黑客松“开箱即用”的要求，放弃了重量级的图数据库，改为内存 + JSON 文件的轻量级存储。

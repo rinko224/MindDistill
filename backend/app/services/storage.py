@@ -21,7 +21,10 @@ class StorageService:
 
         graphs_data = cls.load_json("data/graphs.json")
         if graphs_data:
-            cls.graphs = {k: GraphData(**v) for k, v in graphs_data.items()}
+            # 自动清洗：只加载在 books 中存在的图谱，防止 ghost 数据持久化
+            cls.graphs = {k: GraphData(**v) for k, v in graphs_data.items() if k in cls.books}
+            if len(cls.graphs) < len(graphs_data):
+                print(f"Sanitized {len(graphs_data) - len(cls.graphs)} orphaned graph(s).")
 
         merged_graph_data = cls.load_json("data/merged_graph.json")
         if merged_graph_data:
