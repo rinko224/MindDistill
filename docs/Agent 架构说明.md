@@ -1,71 +1,49 @@
-# Agent 架构说明
+# 学科知识整合智能体 - Agent 架构说明
 
-## 架构总览
+## 1. 架构总览
 
-本系统采用 **单 Agent 多模块** 架构：由一个主控流程调度各业务模块，各模块内部通过结构化 Prompt 调用 LLM，而非多个独立 Agent 协作。
+本系统采用**服务化调度（Service-Oriented Orchestration）**架构，而非复杂的多智能体（Multi-Agent）对话流。我们将复杂的任务拆解为独立的服务类，由核心路由器接收前端指令后，调用不同的 Service 与 LLM 进行针对性的交互。
 
 ```mermaid
 graph TD
-    A[用户上传教材] --> B[文件解析模块]
-    B --> C[知识提取模块]
-    C --> D[图谱构建模块]
-    D --> E[跨教材整合模块]
-    E --> F[RAG 问答模块]
-    F --> G[用户交互界面]
-    E --> H[对话调优模块]
-    H --> E
+    A[用户操作 / 前端界面] -->|文件上传| B(ParserService 解析模块)
+    A -->|触发图谱构建| C(GraphBuilderService 图谱构建模块)
+    A -->|跨教材整合| D(MergerService 整合与决策模块)
+    A -->|日常对话与干预| E(ChatService 教师干预模块)
+    A -->|RAG 问答查询| F(RAGService 检索增强问答模块)
+    
+    B -->|结构化章节| Storage[(本地/内存数据源)]
+    C -->|调用 LLM 提取知识点| Storage
+    D -->|Embedding + 贪婪聚类| Storage
+    E -->|解析指令并修改决策| D
+    F -->|向量匹配 + LLM 生成| Storage
 ```
 
-## 设计决策论证
+## 2. 设计决策论证
 
-### 为什么选择单 Agent 而非多 Agent？
+### 为什么选择服务化单 Agent 架构，而不是拆分多 Agent？
 
-1. **任务耦合度高**：教材解析 → 知识提取 → 图谱构建 → 整合 → RAG 是一条强依赖流水线，每个步骤的输出是下一步的输入。多 Agent 通信开销大，且比赛 5 小时内开发多 Agent 协调机制风险高。
-2. **Prompt 复杂度可控**：每个模块的 Prompt 独立封装在 Service 中，复杂度通过 "一次只处理一个章节" 和严格 JSON Schema 约束来控制，上下文长度不会超限。
-3. **调试成本低**：单 Agent 架构下，数据流在内存中传递，出现问题时容易定位到具体模块；多 Agent 需要日志追踪和消息队列调试。
+1. **上下文管理复杂度**：知识图谱构建和合并涉及大量的数据（每本教材可能多达几十章，产生数百个节点）。如果使用多 Agent 相互对话传递这些数据，不仅容易导致上下文超长（Token 浪费），还极易产生信息截断和格式丢失。
+2. **确定性与可控性**：教材处理是一个**强流程性**工作（解析 -> 提取 -> 合并 -> RAG）。使用代码控制的 Service 流程配合特定任务的 Prompt，能保证 100% 的流程控制，避免了多 Agent 协作时可能出现的“聊天偏题”或“死循环”。
+3. **性能瓶颈**：我们的瓶颈在于 LLM 的并发请求。通过 `asyncio.Semaphore` 在 `GraphBuilderService` 中控制单 Agent 的并发度，比多个 Agent 抢占资源更容易实现限流和稳定提取。
 
-### 模块职责边界
+## 3. 数据流与调用链路
 
-| 模块                | 职责                          | 与 LLM 的交互         |
-| ------------------- | ----------------------------- | --------------------- |
-| ParserService       | PDF/文本解析为结构化章节      | 无（纯规则解析）      |
-| GraphBuilderService | 逐章提取知识点和关系          | 每章一次 LLM 调用     |
-| MergerService       | Embedding 聚类 + LLM 精判重复 | 候选对调用 LLM 二判   |
-| RAGService          | 分块、索引、检索、生成        | Query 时一次 LLM 调用 |
-| ChatService         | 解析用户意图、修改整合结果    | 每次对话一次 LLM 调用 |
+一次完整的“上传 -> 构建 -> 整合 -> 问答”数据流如下：
 
-## 数据流与调用链路
+1. **文本输入层**：用户上传 PDF/MD，`ParserService` 利用正则表达式和格式清洗技术，将文档转化为结构化的 `Chapter` 对象并落盘。
+2. **知识提取层**：`GraphBuilderService` 遍历章节，通过严格的 5-8 个节点限制的 Prompt 指导 LLM 提取“骨架级”概念，结果反序列化为 `KnowledgeNode` 和 `KnowledgeEdge`。
+3. **跨域合并层**：`MergerService` 不直接让 LLM 去大海捞针，而是先用 Sentence-Transformer 将所有节点转为 Embedding 向量。通过余弦相似度计算，将高相似节点圈成“组”，再生成合并决策。
+4. **人在回路（Human-in-the-loop）**：`ChatService` 负责与教师交互。当教师要求分离概念时，它会将自然语言转换为严格的 JSON 指令，直接修改 `MergerService` 生成的决策表，并重新触发图谱渲染。
+5. **RAG 问答层**：`RAGService` 对原始文档分块向量化存入 ChromaDB，并在回答时引用具体出处。
 
-**一次完整流程：**
+## 4. 取舍与权衡 (Trade-offs)
 
-1. 用户上传 PDF → `POST /api/upload/` → 文件落盘 `data/uploaded/`
-2. 前端自动调用 `POST /api/parse/{book_id}` → `ParserService.parse()` → 产出 `Textbook` 对象存入 `StorageService.books`
-3. 用户在教材列表点击「构建图谱」→ `POST /api/graph/build/{book_id}` → `GraphBuilderService.build()` → 逐章调用 `LLMClient.extract_knowledge()` → 产出 `GraphData` 存入 `StorageService.graphs`
-4. 用户点击「执行整合」→ `POST /api/merge/` → `MergerService.merge_all()`:
-   - 收集所有 nodes → `EmbeddingService.encode()` → 计算相似度矩阵
-   - 相似度 > 阈值的对 → `LLMClient.ask()` 精判是否等价
-   - 生成 `MergeDecision` 列表，构建 `merged_graph`
-5. 用户点击「建立索引」→ `POST /api/rag/index` → `RAGService.index_all()`:
-   - 按 600 字 / 100 字重叠分 chunk → `EmbeddingService.encode()` → 存入 ChromaDB
-6. 用户提问 → `POST /api/rag/query` → 问题 embedding → 检索 top-5 chunk → 组装 Prompt → `LLMClient.ask()` → 返回带引用的 `RAGQueryResponse`
+### 放弃的方案：
+- **放弃 Neo4j 数据库**：为了降低部署门槛，满足黑客松“开箱即用”的要求，放弃了重量级的图数据库，改为内存 + JSON 文件的轻量级存储。
+- **放弃纯 LLM 融合节点**：早期尝试让 LLM 一次性吞下两本书的节点进行合并，发现不仅慢且极易遗漏。最终改为 **Embedding 聚类算法计算 + 规则确认** 的方案。
 
-## 取舍与权衡
-
-### 放弃的方案
-
-- **Cytoscape.js**: 虽然图谱效果更专业，但不太好使用，ECharts Graph 已能满足力导向图 + 点击交互需求。
-- **多 Agent 框架（如 LangGraph / AutoGen）**: 比赛时间有限，引入框架会增加不可控因素，手写模块调度更可控。
-- **混合检索（向量 + BM25）**: 作为加分项，如果时间充裕再追加；基础功能优先保证向量检索通路。
-
-### 已知局限
-
-1. **PDF 解析精度**：基于正则和字体大小推断章节标题，对扫描版 PDF 或复杂排版支持有限。
-2. **内存存储**：`StorageService` 使用内存 dict，重启后数据丢失（可快速扩展为 json 文件持久化）。
-3. **LLM 调用成本**：每本教材每章一次 LLM 调用，7 本教材 × 20 章 ≈ 140 次调用；已限制 Prompt 只处理单章。
-4. **LLM 响应速度**: 大部分大模型供应商对API请求都有速率限制，在产生图谱时容易中途丢失响应。
-
-### 如果有更多时间
-
-1. 引入图数据库（Neo4j）存储知识图谱，支持复杂图查询。
-2. 实现混合检索 + Rerank，提升 RAG 准确率。
-3. 将单 Agent 拆分为 "提取 Agent" + "整合 Agent" + "问答 Agent"，通过共享状态协调。
+### 已知局限与未来改进：
+1. **持久化存储**：当前使用 JSON 落盘，当教材数量达到百本级别时，内存占用和启动时间会成为瓶颈。未来应迁移至 PostgreSQL + pgvector + Neo4j 混合存储架构。
+2. **Rerank 重排**：目前的 RAG 仅使用了一次向量检索。如果有更多时间，应当在 ChromaDB 检索出 Top-20 后，加入 BGE-Reranker 模型进行精排，从而提升引用和回答的准确率。
+3. **图谱 RAG（GraphRAG）**：目前 RAG 只检索了文本 Chunk，未来可以探索将提取出的图谱关系网络也作为 Context 注入给 LLM，实现跨文档的复杂推理问答。

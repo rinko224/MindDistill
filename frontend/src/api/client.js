@@ -30,6 +30,7 @@ export const parseBook = (bookId) => client.post(`/api/parse/${bookId}`)
 export const getParseStatus = (bookId) => client.get(`/api/parse/${bookId}/status`)
 
 export const buildGraph = (bookId) => client.post(`/api/graph/build/${bookId}`)
+export const buildAllGraphs = () => client.post('/api/graph/build_all')
 export const getGraph = (bookId) => client.get(`/api/graph/${bookId}`)
 export const getMergedGraph = () => client.get('/api/graph/merged')
 

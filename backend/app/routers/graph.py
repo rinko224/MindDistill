@@ -17,6 +17,17 @@ async def build_graph(book_id: str, background_tasks: BackgroundTasks):
     return {"message": "Graph building started", "book_id": book_id}
 
 
+@router.post("/build_all")
+async def build_all_graphs(background_tasks: BackgroundTasks):
+    count = 0
+    for book_id, book in StorageService.books.items():
+        if book.status == "completed" and book.graph_status != "completed" and book.graph_status != "building":
+            book.graph_status = "building"
+            background_tasks.add_task(GraphBuilderService.build, book_id)
+            count += 1
+    return {"message": f"Started building graphs for {count} books", "count": count}
+
+
 @router.get("/merged")
 async def get_merged_graph():
     graph = StorageService.merged_graph

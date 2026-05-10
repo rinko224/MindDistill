@@ -8,6 +8,8 @@ router = APIRouter()
 @router.post("/generate")
 async def generate_report():
     report = await ReportService.generate()
+    # 自动保存 MD 文件到磁盘
+    await ReportService.save_md()
     return {"success": True, "report": report}
 
 

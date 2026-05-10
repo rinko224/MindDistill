@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import { Button, Drawer, message, Tag } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { Button, Drawer, message, Tag, Input } from 'antd'
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { getGraph, getMergedGraph } from '../api/client'
 
 export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) {
@@ -11,6 +11,38 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
   const [selectedNode, setSelectedNode] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   const [info, setInfo] = useState({ loading: true, nodes: 0, edges: 0, error: null })
+  const [searchText, setSearchText] = useState('')
+
+  const handleSearch = (value) => {
+    const val = value.trim()
+    setSearchText(val)
+    if (!chartInstance.current) return
+
+    chartInstance.current.dispatchAction({ type: 'downplay' })
+    
+    if (!val) return
+
+    const option = chartInstance.current.getOption()
+    if (!option || !option.series || !option.series[0].data) return
+    
+    const nodes = option.series[0].data
+    const matchedIndices = []
+    nodes.forEach((n, idx) => {
+      if (n.name && n.name.toLowerCase().includes(val.toLowerCase())) {
+        matchedIndices.push(idx)
+      }
+    })
+
+    if (matchedIndices.length > 0) {
+      chartInstance.current.dispatchAction({
+        type: 'highlight',
+        seriesIndex: 0,
+        dataIndex: matchedIndices
+      })
+    } else {
+      message.info('未找到匹配的知识点')
+    }
+  }
 
   const fetchGraph = async () => {
     console.log('[GraphPanel] fetchGraph called showMerged=', showMerged, 'selectedBookId=', selectedBookId)
@@ -142,6 +174,13 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
           <Tag color="success">节点 {info.nodes} / 边 {info.edges}</Tag>
         )}
         <div style={{ flex: 1 }} />
+        <Input.Search
+          placeholder="搜索知识点..."
+          allowClear
+          onSearch={handleSearch}
+          style={{ width: 200 }}
+          size="small"
+        />
         <Button
           icon={<ReloadOutlined />}
           size="small"

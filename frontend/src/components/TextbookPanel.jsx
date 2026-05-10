@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { Upload, Button, List, Tag, message, Spin, Popconfirm, Space, Tooltip } from 'antd'
 import { UploadOutlined, FileTextOutlined, ReloadOutlined, PartitionOutlined, DeleteOutlined } from '@ant-design/icons'
-import { uploadFile, listBooks, parseBook, getParseStatus, buildGraph, deleteBook } from '../api/client'
+import { uploadFile, listBooks, parseBook, getParseStatus, buildGraph, buildAllGraphs, deleteBook } from '../api/client'
 
 export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFlag }) {
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [building, setBuilding] = useState({})
   const [deleting, setDeleting] = useState({})
+  const [batchBuilding, setBatchBuilding] = useState(false)
 
   const [uploadingFiles, setUploadingFiles] = useState([])
 
@@ -84,6 +85,24 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
     }
   }
 
+  const handleBuildAllGraphs = async () => {
+    setBatchBuilding(true)
+    message.info('开始为所有已解析教材构建图谱...')
+    try {
+      const res = await buildAllGraphs()
+      if (res.count > 0) {
+        message.success(`已提交 ${res.count} 本教材的构建任务`)
+        fetchBooks() // 立即更新状态显示“构建中”
+      } else {
+        message.warning('没有需要构建图谱的教材（请确保教材已解析完成且未构建图谱）')
+      }
+    } catch (e) {
+      message.error(`批量任务提交失败: ${e}`)
+    } finally {
+      setBatchBuilding(false)
+    }
+  }
+
   const handleDeleteBook = async (bookId, title) => {
     setDeleting(prev => ({ ...prev, [bookId]: true }))
     try {
@@ -134,6 +153,17 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
         size="small"
       >
         刷新列表
+      </Button>
+
+      <Button
+        type="primary"
+        icon={<PartitionOutlined />}
+        onClick={handleBuildAllGraphs}
+        loading={batchBuilding}
+        style={{ marginBottom: 12, width: '100%', background: '#722ed1', borderColor: '#722ed1' }}
+        size="small"
+      >
+        一键构建所有图谱
       </Button>
 
       <Spin spinning={loading} style={{ flex: 1, overflow: 'auto' }}>
