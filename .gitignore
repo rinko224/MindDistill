@@ -67,6 +67,7 @@ backend/test_*.py
 
 # 样例教材数据
 sample_textbook.md
+sample_textbook_2.md
 
 # 运行时生成的数据文件
 backend/data/books.json

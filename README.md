@@ -16,7 +16,22 @@ AI 全栈黑客松项目：多教材知识整合系统，支持知识图谱构�
 
 ## 快速启动
 
-### 1. 启动后端
+### 方式一：Docker（推荐）
+
+```bash
+# 确保已配置 backend/.env
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填入 OPENAI_API_KEY
+
+# 一键启动前后端
+docker-compose up --build
+
+# 打开浏览器访问 http://localhost:5173
+```
+
+### 方式二：本地开发
+
+#### 1. 启动后端
 
 ```bash
 cd backend
@@ -32,7 +47,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. 启动前端
+#### 2. 启动前端
 
 ```bash
 cd frontend
