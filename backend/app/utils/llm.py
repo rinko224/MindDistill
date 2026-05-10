@@ -1,4 +1,6 @@
 import os
+import json
+import re
 from dotenv import load_dotenv
 load_dotenv()
 from typing import Optional
@@ -80,8 +82,6 @@ class LLMClient:
 请只输出 JSON，不要包含任何解释文字。
 """
         text = await cls.ask(prompt)
-        import json
-        import re
         try:
             match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
             if match:

@@ -32,6 +32,7 @@ async def upload_file(file: UploadFile = File(...)):
         status="parsing",
     )
     StorageService.books[book_id] = book
+    StorageService.save_all()
     return {"success": True, "book": book}
 
 

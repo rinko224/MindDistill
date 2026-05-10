@@ -139,6 +139,8 @@ class MergerService:
                 if rep_id in all_nodes:
                     merged_node = all_nodes[rep_id].copy()
                     merged_node.id = d.result_node or f"merged_{rep_id}"
+                    # 累加出现频次
+                    merged_node.occurrence = sum(all_nodes[nid].occurrence for nid in d.affected_nodes if nid in all_nodes)
                     merged_nodes_dict[merged_node.id] = merged_node
 
                     for n_id in d.affected_nodes:

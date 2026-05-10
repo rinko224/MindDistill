@@ -30,9 +30,7 @@ export default function ChatPanel({ onUpdate }) {
     try {
       const res = await sendChat(newMessages)
       setMessages([...newMessages, { role: 'assistant', content: res.reply }])
-      if ((res.updated_graph || res.updated_merge) && onUpdate) {
-        onUpdate()
-      }
+      onUpdate?.()
     } catch (e) {
       message.error(e)
     } finally {

@@ -40,6 +40,7 @@ class KnowledgeNode(BaseModel):
     chapter: str
     page: int
     textbook_id: str
+    occurrence: int = 1
 
 
 class KnowledgeEdge(BaseModel):

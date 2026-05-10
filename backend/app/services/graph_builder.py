@@ -1,3 +1,4 @@
+import asyncio
 from app.models.schemas import GraphData, KnowledgeNode, KnowledgeEdge
 from app.services.storage import StorageService
 from app.utils.llm import LLMClient
@@ -12,15 +13,31 @@ class GraphBuilderService:
 
         node_dict = {}
         edges = []
+        semaphore = asyncio.Semaphore(5)  # 限制并发数
+
+        async def process_chapter(chapter):
+            skip_keywords = ["前言", "序言", "目录", "编委名单", "后记", "参考文献", "附录", "使用说明"]
+            if any(kw in chapter.title for kw in skip_keywords):
+                return None
+            
+            async with semaphore:
+                try:
+                    result = await LLMClient.extract_knowledge(chapter.content, chapter.title)
+                    return result, chapter
+                except Exception as e:
+                    print(f"Error extracting knowledge from chapter {chapter.title}: {e}")
+                    return None
 
         try:
-            for chapter in book.chapters:
-                skip_keywords = ["前言", "序言", "目录", "编委名单", "后记", "参考文献", "附录", "使用说明"]
-                if any(kw in chapter.title for kw in skip_keywords):
+            tasks = [process_chapter(chapter) for chapter in book.chapters]
+            results = await asyncio.gather(*tasks)
+
+            edge_dict = {}
+            for res in results:
+                if not res:
                     continue
-                    
-                result = await LLMClient.extract_knowledge(chapter.content, chapter.title)
                 
+                result, chapter = res
                 chapter_nodes = result.get("nodes", [])
                 id_map = {}
                 
@@ -40,8 +57,11 @@ class GraphBuilderService:
                             category=node_data.get('category', '概念'),
                             chapter=node_data.get('chapter', chapter.title),
                             page=node_data.get('page', chapter.page_start),
-                            textbook_id=book_id
+                            textbook_id=book_id,
+                            occurrence=1
                         )
+                    else:
+                        node_dict[new_id].occurrence += 1
                 
                 chapter_edges = result.get("edges", [])
                 for edge_data in chapter_edges:
@@ -55,17 +75,18 @@ class GraphBuilderService:
                         rtype = edge_data.get('relation_type')
                         if rtype not in ["prerequisite", "parallel", "contains", "applies_to"]:
                             rtype = "parallel"
-                            
-                        edge = KnowledgeEdge(
-                            source=source_new,
-                            target=target_new,
-                            relation_type=rtype,
-                            description=edge_data.get('description', '')
-                        )
-                        edges.append(edge)
+                        
+                        edge_key = f"{source_new}_{target_new}_{rtype}"
+                        if edge_key not in edge_dict:
+                            edge_dict[edge_key] = KnowledgeEdge(
+                                source=source_new,
+                                target=target_new,
+                                relation_type=rtype,
+                                description=edge_data.get('description', '')
+                            )
 
             nodes = list(node_dict.values())
-
+            edges = list(edge_dict.values())
             graph = GraphData(nodes=nodes, edges=edges)
             StorageService.graphs[book_id] = graph
             book.graph_status = "completed"
