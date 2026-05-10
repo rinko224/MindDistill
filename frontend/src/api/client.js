@@ -33,6 +33,7 @@ export const getGraph = (bookId) => client.get(`/api/graph/${bookId}`)
 export const getMergedGraph = () => client.get('/api/graph/merged')
 
 export const runMerge = () => client.post('/api/merge/')
+export const resetMerge = () => client.delete('/api/merge/')
 export const getMergeDecisions = () => client.get('/api/merge/decisions')
 export const getMergeResult = () => client.get('/api/merge/result')
 

@@ -26,13 +26,13 @@ graph TD
 
 ### 模块职责边界
 
-| 模块 | 职责 | 与 LLM 的交互 |
-|---|---|---|
-| ParserService | PDF/文本解析为结构化章节 | 无（纯规则解析） |
-| GraphBuilderService | 逐章提取知识点和关系 | 每章一次 LLM 调用 |
-| MergerService | Embedding 聚类 + LLM 精判重复 | 候选对调用 LLM 二判 |
-| RAGService | 分块、索引、检索、生成 | Query 时一次 LLM 调用 |
-| ChatService | 解析用户意图、修改整合结果 | 每次对话一次 LLM 调用 |
+| 模块                | 职责                          | 与 LLM 的交互         |
+| ------------------- | ----------------------------- | --------------------- |
+| ParserService       | PDF/文本解析为结构化章节      | 无（纯规则解析）      |
+| GraphBuilderService | 逐章提取知识点和关系          | 每章一次 LLM 调用     |
+| MergerService       | Embedding 聚类 + LLM 精判重复 | 候选对调用 LLM 二判   |
+| RAGService          | 分块、索引、检索、生成        | Query 时一次 LLM 调用 |
+| ChatService         | 解析用户意图、修改整合结果    | 每次对话一次 LLM 调用 |
 
 ## 数据流与调用链路
 
@@ -53,7 +53,7 @@ graph TD
 
 ### 放弃的方案
 
-- **Cytoscape.js**: 虽然图谱效果更专业，但学习曲线陡峭，ECharts Graph 已能满足力导向图 + 点击交互需求。
+- **Cytoscape.js**: 虽然图谱效果更专业，但不太好使用，ECharts Graph 已能满足力导向图 + 点击交互需求。
 - **多 Agent 框架（如 LangGraph / AutoGen）**: 比赛时间有限，引入框架会增加不可控因素，手写模块调度更可控。
 - **混合检索（向量 + BM25）**: 作为加分项，如果时间充裕再追加；基础功能优先保证向量检索通路。
 

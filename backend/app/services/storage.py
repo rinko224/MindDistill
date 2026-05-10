@@ -18,18 +18,34 @@ class StorageService:
         books_data = cls.load_json("data/books.json")
         if books_data:
             cls.books = {k: Textbook(**v) for k, v in books_data.items()}
-            
+
         graphs_data = cls.load_json("data/graphs.json")
         if graphs_data:
             cls.graphs = {k: GraphData(**v) for k, v in graphs_data.items()}
+
+        merged_graph_data = cls.load_json("data/merged_graph.json")
+        if merged_graph_data:
+            cls.merged_graph = GraphData(**merged_graph_data)
+
+        decisions_data = cls.load_json("data/merge_decisions.json")
+        if decisions_data:
+            cls.merge_decisions = [MergeDecision(**d) for d in decisions_data]
+
+        result_data = cls.load_json("data/merge_result.json")
+        if result_data:
+            cls.merge_result = MergeResult(**result_data)
 
     @classmethod
     def save_all(cls):
         books_data = {k: v.model_dump() for k, v in cls.books.items()}
         cls.save_json("data/books.json", books_data)
-        
+
         graphs_data = {k: v.model_dump() for k, v in cls.graphs.items()}
         cls.save_json("data/graphs.json", graphs_data)
+
+        cls.save_json("data/merged_graph.json", cls.merged_graph.model_dump() if cls.merged_graph else None)
+        cls.save_json("data/merge_decisions.json", [d.model_dump() for d in cls.merge_decisions])
+        cls.save_json("data/merge_result.json", cls.merge_result.model_dump() if cls.merge_result else None)
 
     @classmethod
     def save_json(cls, path: str, data):

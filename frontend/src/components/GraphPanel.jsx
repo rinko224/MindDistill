@@ -1,61 +1,85 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import { Button, Drawer, message } from 'antd'
+import { Button, Drawer, message, Tag } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { getGraph, getMergedGraph } from '../api/client'
 
-export default function GraphPanel({ selectedBookId, refreshFlag }) {
+export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) {
   const chartRef = useRef(null)
   const chartInstance = useRef(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
+  const [info, setInfo] = useState({ loading: true, nodes: 0, edges: 0, error: null })
 
   const fetchGraph = async () => {
+    console.log('[GraphPanel] fetchGraph called showMerged=', showMerged, 'selectedBookId=', selectedBookId)
+    setInfo((prev) => ({ ...prev, loading: true }))
     try {
       let data
-      if (selectedBookId) {
+      if (showMerged) {
+        console.log('[GraphPanel] -> calling getMergedGraph()')
+        data = await getMergedGraph()
+      } else if (selectedBookId) {
+        console.log('[GraphPanel] -> calling getGraph(', selectedBookId, ')')
         data = await getGraph(selectedBookId)
       } else {
-        data = await getMergedGraph()
+        console.log('[GraphPanel] -> no selection')
+        data = { error: 'No selection' }
       }
-      if (!chartInstance.current) {
-        chartInstance.current = echarts.init(chartRef.current)
+
+      if (data?.error || !data) {
+        setInfo({ loading: false, nodes: 0, edges: 0, error: data?.error || '无数据' })
+        if (chartInstance.current) {
+          chartInstance.current.setOption({ series: [] }, true)
+        }
+        return
       }
-      if (data?.error || !data || (!data.nodes?.length && !data.edges?.length)) {
-        chartInstance.current.clear()
-        chartInstance.current.setOption({
-            title: { text: '请先在左侧选择一本已生成图谱的教材', left: 'center', top: 'center', textStyle: { color: '#ccc', fontSize: 18 } }
-        })
+
+      const nodeCount = data.nodes?.length || 0
+      const edgeCount = data.edges?.length || 0
+      setInfo({ loading: false, nodes: nodeCount, edges: edgeCount, error: null })
+
+      if (!nodeCount && !edgeCount) {
+        if (chartInstance.current) {
+          chartInstance.current.setOption({ series: [] }, true)
+        }
         return
       }
       renderGraph(data)
     } catch (e) {
+      setInfo({ loading: false, nodes: 0, edges: 0, error: String(e) })
+      message.error(`图谱加载失败: ${e}`)
     }
   }
 
   const renderGraph = (graphData) => {
+    if (!chartRef.current) return
     if (!chartInstance.current) {
       chartInstance.current = echarts.init(chartRef.current)
     }
 
-    const nodes = (graphData.nodes || []).map((n) => ({
-      id: n.id,
-      name: n.name,
-      value: n.category,
-      symbolSize: 30 + (n.occurrence || 1) * 5,
-      itemStyle: { color: n.textbook_id ? stringToColor(n.textbook_id) : '#5470c6' },
-      ...n,
-    }))
+    // echarts graph 的 links source/target 优先匹配 name
+    const idToName = {}
+    const nodes = (graphData.nodes || []).map((n) => {
+      idToName[n.id] = n.name
+      return {
+        id: n.id,
+        name: n.name,
+        value: n.category,
+        symbolSize: 30 + (n.occurrence || 1) * 5,
+        itemStyle: { color: n.textbook_id ? stringToColor(n.textbook_id) : '#5470c6' },
+        ...n,
+      }
+    })
 
     const edges = (graphData.edges || []).map((e) => ({
-      source: e.source,
-      target: e.target,
+      source: idToName[e.source] || e.source,
+      target: idToName[e.target] || e.target,
       relation: e.relation_type,
       ...e,
     }))
 
     const option = {
-      title: { text: selectedBookId ? '单本教材图谱' : '跨教材整合图谱', left: 'center' },
       tooltip: { formatter: (p) => p.data.name || p.data.relation },
       series: [
         {
@@ -72,6 +96,7 @@ export default function GraphPanel({ selectedBookId, refreshFlag }) {
       ],
     }
 
+    chartInstance.current.resize()
     chartInstance.current.setOption(option, true)
     chartInstance.current.off('click')
     chartInstance.current.on('click', (params) => {
@@ -83,25 +108,39 @@ export default function GraphPanel({ selectedBookId, refreshFlag }) {
   }
 
   useEffect(() => {
+    console.log('[GraphPanel] useEffect triggered showMerged=', showMerged, 'selectedBookId=', selectedBookId, 'refreshFlag=', refreshFlag)
     fetchGraph()
     const handleResize = () => chartInstance.current?.resize()
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [selectedBookId, refreshFlag])
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      chartInstance.current?.dispose()
+      chartInstance.current = null
+    }
+  }, [selectedBookId, showMerged, refreshFlag])
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <Button 
-        icon={<ReloadOutlined />} 
-        onClick={() => {
-          fetchGraph()
-          message.success('图谱已刷新')
-        }}
-        style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}
-      >
-        刷新图谱
-      </Button>
-      <div ref={chartRef} style={{ width: '100%', height: '100%' }} />
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8, background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
+        <b>{showMerged ? '跨教材整合图谱' : '单本教材图谱'}</b>
+        {info.loading && <Tag color="processing">加载中</Tag>}
+        {info.error && <Tag color="error">错误: {info.error}</Tag>}
+        {!info.loading && !info.error && (
+          <Tag color="success">节点 {info.nodes} / 边 {info.edges}</Tag>
+        )}
+        <div style={{ flex: 1 }} />
+        <Button
+          icon={<ReloadOutlined />}
+          size="small"
+          onClick={() => {
+            fetchGraph()
+            message.success('图谱已刷新')
+          }}
+        >
+          刷新图谱
+        </Button>
+      </div>
+      <div ref={chartRef} style={{ flex: 1, minHeight: 400 }} />
       <Drawer
         title={selectedNode?.name || '知识点详情'}
         open={drawerOpen}

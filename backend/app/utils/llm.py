@@ -35,7 +35,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
         )
-        print(resp.choices[0].message.content)
+
         if not resp or not getattr(resp, 'choices', None):
             print(f"LLM API returned unexpected response: {resp}")
             return ""

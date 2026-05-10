@@ -13,8 +13,17 @@ function App() {
   const [selectedBookId, setSelectedBookId] = useState(null)
   const [refreshFlag, setRefreshFlag] = useState(0)
   const [leftSiderCollapsed, setLeftSiderCollapsed] = useState(false)
+  const [showMerged, setShowMerged] = useState(false)
 
   const triggerRefresh = () => setRefreshFlag((v) => v + 1)
+
+  const handleSelectBook = (bookId) => {
+    console.log('[App] handleSelectBook', bookId)
+    setSelectedBookId(bookId)
+    setShowMerged(false)
+  }
+
+  console.log('[App] render showMerged=', showMerged, 'selectedBookId=', selectedBookId)
 
   return (
     <Layout style={{ height: '100vh', display: 'flex' }}>
@@ -34,7 +43,7 @@ function App() {
         }}
       >
         <TextbookPanel
-          onSelectBook={setSelectedBookId}
+          onSelectBook={handleSelectBook}
           onUploadSuccess={triggerRefresh}
           refreshFlag={refreshFlag}
         />
@@ -72,7 +81,7 @@ function App() {
 
         {/* 图谱面板 */}
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <GraphPanel selectedBookId={selectedBookId} refreshFlag={refreshFlag} />
+          <GraphPanel selectedBookId={selectedBookId} showMerged={showMerged} refreshFlag={refreshFlag} />
         </div>
       </Content>
 
@@ -99,7 +108,7 @@ function App() {
             {
               key: 'merge',
               label: '整合',
-              children: <MergePanel refreshFlag={refreshFlag} />,
+              children: <MergePanel refreshFlag={refreshFlag} onShowMerged={() => setShowMerged(true)} onUpdate={triggerRefresh} />,
             },
             {
               key: 'chat',
