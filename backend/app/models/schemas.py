@@ -21,6 +21,7 @@ class Textbook(BaseModel):
     total_chars: int
     format: str
     status: Literal["parsing", "completed", "failed"] = "parsing"
+    graph_status: Literal["none", "building", "completed", "failed"] = "none"
     chapters: List[Chapter] = []
 
 

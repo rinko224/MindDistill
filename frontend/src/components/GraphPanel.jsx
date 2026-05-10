@@ -18,7 +18,14 @@ export default function GraphPanel({ selectedBookId, refreshFlag }) {
       } else {
         data = await getMergedGraph()
       }
-      if (data?.error) {
+      if (!chartInstance.current) {
+        chartInstance.current = echarts.init(chartRef.current)
+      }
+      if (data?.error || !data || (!data.nodes?.length && !data.edges?.length)) {
+        chartInstance.current.clear()
+        chartInstance.current.setOption({
+            title: { text: '请先在左侧选择一本已生成图谱的教材', left: 'center', top: 'center', textStyle: { color: '#ccc', fontSize: 18 } }
+        })
         return
       }
       renderGraph(data)

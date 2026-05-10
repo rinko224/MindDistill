@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -33,6 +35,10 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
         )
+        print(resp.choices[0].message.content)
+        if not resp or not getattr(resp, 'choices', None):
+            print(f"LLM API returned unexpected response: {resp}")
+            return ""
         return resp.choices[0].message.content or ""
 
     @classmethod
@@ -46,11 +52,32 @@ class LLMClient:
 - 每个知识点需包含：id、name、definition、category、chapter、page
 - 每条关系需包含：source、target、relation_type、description
 
+【JSON 输出示例（Few-shot）】:
+{{
+  "nodes": [
+    {{
+      "id": "node_1",
+      "name": "局部解剖学",
+      "definition": "研究人体各局部内各器官的形态、位置、毗邻等的一门学科。",
+      "category": "核心概念",
+      "chapter": "第一章 头部",
+      "page": 1
+    }}
+  ],
+  "edges": [
+    {{
+      "source": "node_1",
+      "target": "node_2",
+      "relation_type": "contains",
+      "description": "局部解剖学包含头部解剖的学习"
+    }}
+  ]
+}}
+
 章节标题：{chapter_title}
 章节内容（前2000字）：{chapter_content[:2000]}
 
-请只输出 JSON，不要包含任何解释文字：
-{{"nodes":[...],"edges":[...]}}
+请只输出 JSON，不要包含任何解释文字。
 """
         text = await cls.ask(prompt)
         import json

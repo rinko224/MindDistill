@@ -3,7 +3,7 @@ import { Input, Button, List, message } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
 import { sendChat } from '../api/client'
 
-export default function ChatPanel() {
+export default function ChatPanel({ onUpdate }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: '您好！我是学科知识整合助手。您可以询问整合决策的原因，或提出修改建议。' },
   ])
@@ -30,6 +30,9 @@ export default function ChatPanel() {
     try {
       const res = await sendChat(newMessages)
       setMessages([...newMessages, { role: 'assistant', content: res.reply }])
+      if ((res.updated_graph || res.updated_merge) && onUpdate) {
+        onUpdate()
+      }
     } catch (e) {
       message.error(e)
     } finally {

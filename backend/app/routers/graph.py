@@ -12,6 +12,7 @@ async def build_graph(book_id: str, background_tasks: BackgroundTasks):
     if not book:
         return {"error": "Book not found"}
 
+    book.graph_status = "building"
     background_tasks.add_task(GraphBuilderService.build, book_id)
     return {"message": "Graph building started", "book_id": book_id}
 

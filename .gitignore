@@ -61,3 +61,13 @@ yarn.lock
 pnpm-lock.yaml
 
 第一届AI全栈黑客松赛题_前3.1节.md
+
+# 临时诊断/测试脚本
+backend/test_*.py
+
+# 样例教材数据
+sample_textbook.md
+
+# 运行时生成的数据文件
+backend/data/books.json
+backend/data/graphs.json

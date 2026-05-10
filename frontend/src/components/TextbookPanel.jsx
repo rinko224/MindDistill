@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { Upload, Button, List, Tag, message, Spin } from 'antd'
-import { UploadOutlined, FileTextOutlined, ReloadOutlined, PartitionOutlined } from '@ant-design/icons'
-import { uploadFile, listBooks, parseBook, getParseStatus, buildGraph } from '../api/client'
+import { Upload, Button, List, Tag, message, Spin, Popconfirm, Space, Tooltip } from 'antd'
+import { UploadOutlined, FileTextOutlined, ReloadOutlined, PartitionOutlined, DeleteOutlined } from '@ant-design/icons'
+import { uploadFile, listBooks, parseBook, getParseStatus, buildGraph, deleteBook } from '../api/client'
 
 export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFlag }) {
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [building, setBuilding] = useState({})
+  const [deleting, setDeleting] = useState({})
 
   const fetchBooks = async () => {
     try {
@@ -51,59 +52,156 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
     }
   }
 
+  const handleDeleteBook = async (bookId, title) => {
+    setDeleting(prev => ({ ...prev, [bookId]: true }))
+    try {
+      await deleteBook(bookId)
+      message.success(`已删除教材：${title}`)
+      await fetchBooks()
+    } catch (e) {
+      message.error(`删除失败: ${e}`)
+    } finally {
+      setDeleting(prev => ({ ...prev, [bookId]: false }))
+    }
+  }
+
   const statusColor = {
     parsing: 'processing',
     completed: 'success',
     failed: 'error',
   }
 
+  const statusText = {
+    parsing: '解析中',
+    completed: '已完成',
+    failed: '解析失败',
+  }
+
   return (
-    <div style={{ padding: 16 }}>
-      <h3 style={{ marginBottom: 12 }}>教材管理</h3>
-      <Upload.Dragger customRequest={handleUpload} showUploadList={false} accept=".pdf,.md,.txt,.docx,.xlsx">
+    <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <h3 style={{ marginBottom: 12, whiteSpace: 'nowrap' }}>📚 教材管理</h3>
+      <Upload.Dragger 
+        customRequest={handleUpload} 
+        showUploadList={false} 
+        accept=".pdf,.md,.txt,.docx,.xlsx"
+        style={{ marginBottom: 12 }}
+      >
         <p className="ant-upload-drag-icon">
           <UploadOutlined />
         </p>
-        <p className="ant-upload-text">拖拽或点击上传教材</p>
-        <p className="ant-upload-hint">支持 PDF / Markdown / TXT / Word / Excel</p>
+        <p className="ant-upload-text">拖拽或点击上传</p>
+        <p className="ant-upload-hint" style={{ fontSize: 12 }}>PDF / MD / TXT / Word / Excel</p>
       </Upload.Dragger>
 
-      <Button icon={<ReloadOutlined />} onClick={fetchBooks} style={{ marginTop: 12, width: '100%' }}>
+      <Button 
+        icon={<ReloadOutlined />} 
+        onClick={fetchBooks} 
+        style={{ marginBottom: 12, width: '100%' }}
+        size="small"
+      >
         刷新列表
       </Button>
 
-      <Spin spinning={loading}>
+      <Spin spinning={loading} style={{ flex: 1, overflow: 'auto' }}>
         <List
-          style={{ marginTop: 16 }}
           dataSource={books}
           renderItem={(item) => (
             <List.Item
-              actions={[
-                <Tag color={statusColor[item.status] || 'default'} key="status">{item.status}</Tag>,
-                <Button 
-                  key="build"
-                  size="small" 
-                  type="primary" 
-                  icon={<PartitionOutlined />} 
-                  loading={building[item.textbook_id]}
+              style={{
+                cursor: 'pointer',
+                background: '#fafafa',
+                marginBottom: 8,
+                padding: 12,
+                borderRadius: 6,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+              }}
+              onClick={() => onSelectBook(item.textbook_id)}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 6,
+                }}>
+                  <FileTextOutlined style={{ fontSize: 16, color: '#1890ff', flexShrink: 0 }} />
+                  <Tooltip title={item.title}>
+                    <div style={{
+                      fontWeight: 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1,
+                    }}>
+                      {item.title}
+                    </div>
+                  </Tooltip>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  fontSize: 12,
+                  color: '#666',
+                }}>
+                  <span>{item.format?.toUpperCase()}</span>
+                  <span>•</span>
+                  <span>{(item.total_chars / 10000).toFixed(1)}万字</span>
+                  <span>•</span>
+                  <span>{item.chapters?.length || 0}章</span>
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                flexShrink: 0,
+                marginLeft: 8,
+              }} onClick={(e) => e.stopPropagation()}>
+                <Tag color={statusColor[item.status] || 'default'} style={{ marginRight: 0 }}>
+                  {statusText[item.status] || item.status}
+                </Tag>
+                <Button
+                  size="small"
+                  type={item.graph_status === 'completed' ? 'default' : 'primary'}
+                  icon={<PartitionOutlined />}
+                  loading={building[item.textbook_id] || item.graph_status === 'building'}
+                  disabled={item.status !== 'completed' || item.graph_status === 'completed'}
                   onClick={(e) => {
                     e.stopPropagation()
                     handleBuildGraph(item.textbook_id)
                   }}
+                  style={{ fontSize: 12 }}
                 >
-                  {building[item.textbook_id] ? '构建中' : '构建图谱'}
+                  {item.graph_status === 'completed' ? '✓图谱' : '图谱'}
                 </Button>
-              ]}
-              onClick={() => onSelectBook(item.textbook_id)}
-              style={{ cursor: 'pointer', background: '#fafafa', marginBottom: 8, padding: 12, borderRadius: 6 }}
-            >
-              <List.Item.Meta
-                avatar={<FileTextOutlined />}
-                title={item.title}
-                description={`${item.format?.toUpperCase()} · ${(item.total_chars / 10000).toFixed(1)}万字 · ${item.chapters?.length || 0}章`}
-              />
+                <Popconfirm
+                  title="删除教材"
+                  description={`确定要删除《${item.title}》吗？此操作不可恢复。`}
+                  onConfirm={(e) => {
+                    e.stopPropagation()
+                    handleDeleteBook(item.textbook_id, item.title)
+                  }}
+                  onCancel={(e) => e.stopPropagation()}
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    loading={deleting[item.textbook_id]}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Popconfirm>
+              </div>
             </List.Item>
           )}
+          locale={{ emptyText: '暂无教材，上传一个开始吧' }}
         />
       </Spin>
     </div>

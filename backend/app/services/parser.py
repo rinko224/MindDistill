@@ -20,11 +20,17 @@ class ParserService:
 
         try:
             if book.format == "pdf":
+                import fitz
+                doc = fitz.open(file_path)
+                book.total_pages = doc.page_count
+                doc.close()
                 chapters = cls._parse_pdf(file_path)
             elif book.format in ["md", "markdown", "txt"]:
+                book.total_pages = 1
                 chapters = cls._parse_text(file_path)
             else:
                 chapters = []
+                book.total_pages = 0
 
             book.chapters = chapters
             book.total_chars = sum(c.char_count for c in chapters)
@@ -66,6 +72,11 @@ class ParserService:
                 for match in matches:
                     start_idx = match.start()
                     title = match.group(1).strip()
+                    if len(title) < 10:
+                        lines = text[start_idx:].split('\n')
+                        if len(lines) > 1 and lines[1].strip():
+                            title = f"{title} {lines[1].strip()}"
+                    
                     if current_chapter:
                         current_chapter.content += "\n" + text[last_idx:start_idx]
                         current_chapter.page_end = page_num + 1
