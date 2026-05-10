@@ -52,9 +52,12 @@ app.include_router(rag.router, prefix="/api/rag", tags=["RAG 问答"])
 app.include_router(chat.router, prefix="/api/chat", tags=["对话"])
 app.include_router(report.router, prefix="/api/report", tags=["报告"])
 
-# 如果存在前端构建产物，挂载静态文件
-if os.path.exists("../frontend/dist"):
-    app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="static")
+# 如果存在前端构建产物，挂载静态文件（支持本地开发和 Docker 部署两种路径）
+static_dirs = ["dist", "../frontend/dist"]
+for d in static_dirs:
+    if os.path.exists(d):
+        app.mount("/", StaticFiles(directory=d, html=True), name="static")
+        break
 
 
 @app.get("/health")
