@@ -38,6 +38,7 @@ class LLMClient:
             temperature=temperature,
         )
 
+        print(resp.choices[0].message.content)
         if not resp or not getattr(resp, 'choices', None):
             print(f"LLM API returned unexpected response: {resp}")
             return ""
@@ -46,15 +47,14 @@ class LLMClient:
     @classmethod
     async def extract_knowledge(cls, chapter_content: str, chapter_title: str) -> dict:
         prompt = f"""
-请从以下教材章节中提取核心知识点及其关系，以严格 JSON 格式返回。
+请从以下教材章节中提取核心知识点及其关系，并确保每个知识点都有完整的定义和元数据。
 
 要求：
-- 知识点类型至少包含：核心概念、定理、方法、现象
-- 关系类型至少包含：prerequisite（前置依赖）、contains（包含）、parallel（并列）、applies_to（应用）
-- 每个知识点需包含：id、name、definition、category、chapter、page
-- 每条关系需包含：source、target、relation_type、description
+1. **控制数量**：每个章节提取 5-8 个最重要的知识点，聚焦核心概念、定理、方法。
+2. **严格格式**：必须返回严格的 JSON 格式。
+3. **内容完整**：每个节点必须包含 definition（定义）、category（类型）、chapter（章节名） and page（页码）。
 
-【JSON 输出示例（Few-shot）】:
+【JSON 输出示例】:
 {{
   "nodes": [
     {{
@@ -62,7 +62,7 @@ class LLMClient:
       "name": "局部解剖学",
       "definition": "研究人体各局部内各器官的形态、位置、毗邻等的一门学科。",
       "category": "核心概念",
-      "chapter": "第一章 头部",
+      "chapter": "{chapter_title}",
       "page": 1
     }}
   ],
@@ -77,7 +77,7 @@ class LLMClient:
 }}
 
 章节标题：{chapter_title}
-章节内容（前2000字）：{chapter_content[:2000]}
+章节内容（前3000字）：{chapter_content[:3000]}
 
 请只输出 JSON，不要包含任何解释文字。
 """

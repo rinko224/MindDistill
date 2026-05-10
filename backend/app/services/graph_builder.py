@@ -7,22 +7,45 @@ from app.utils.llm import LLMClient
 class GraphBuilderService:
     @classmethod
     async def build(cls, book_id: str):
+        import os
+        import json
         book = StorageService.books.get(book_id)
         if not book:
             return
+        
+        # 立即保存状态，防止进程意外中止后状态丢失
+        book.graph_status = "building"
+        StorageService.save_all()
 
         node_dict = {}
         edges = []
-        semaphore = asyncio.Semaphore(5)  # 限制并发数
+        semaphore = asyncio.Semaphore(5)
+        
+        # 缓存目录
+        cache_dir = os.path.join("data/cache/extract", book_id)
+        os.makedirs(cache_dir, exist_ok=True)
 
         async def process_chapter(chapter):
             skip_keywords = ["前言", "序言", "目录", "编委名单", "后记", "参考文献", "附录", "使用说明"]
             if any(kw in chapter.title for kw in skip_keywords):
                 return None
             
+            cache_path = os.path.join(cache_dir, f"{chapter.chapter_id}.json")
+            
+            # 检查缓存
+            if os.path.exists(cache_path):
+                try:
+                    with open(cache_path, "r", encoding="utf-8") as f:
+                        return json.load(f), chapter
+                except Exception:
+                    pass
+
             async with semaphore:
                 try:
                     result = await LLMClient.extract_knowledge(chapter.content, chapter.title)
+                    # 写入缓存
+                    with open(cache_path, "w", encoding="utf-8") as f:
+                        json.dump(result, f, ensure_ascii=False, indent=2)
                     return result, chapter
                 except Exception as e:
                     print(f"Error extracting knowledge from chapter {chapter.title}: {e}")
@@ -49,6 +72,16 @@ class GraphBuilderService:
                     new_id = f"{book_id}_{name}"
                     id_map[str(node_data.get('id', ''))] = new_id
                     
+                    # 确保 page 是整数，防止 LLM 返回 null 或非数字导致 Pydantic 报错
+                    page_val = node_data.get('page')
+                    if page_val is None:
+                        page_val = chapter.page_start
+                    else:
+                        try:
+                            page_val = int(page_val)
+                        except (ValueError, TypeError):
+                            page_val = chapter.page_start
+
                     if new_id not in node_dict:
                         node_dict[new_id] = KnowledgeNode(
                             id=new_id,
@@ -56,7 +89,7 @@ class GraphBuilderService:
                             definition=node_data.get('definition', ''),
                             category=node_data.get('category', '概念'),
                             chapter=node_data.get('chapter', chapter.title),
-                            page=node_data.get('page', chapter.page_start),
+                            page=page_val,
                             textbook_id=book_id,
                             occurrence=1
                         )

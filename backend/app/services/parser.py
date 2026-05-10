@@ -43,61 +43,72 @@ class ParserService:
 
     @classmethod
     def _parse_pdf(cls, file_path: str) -> List[Chapter]:
-        import fitz  # PyMuPDF
+        import fitz
         import uuid
+        import re
+        
         chapters = []
         doc = fitz.open(file_path)
         current_chapter = None
-        # 改进正则表达式：匹配行首的第X章，后面跟随非空字符，且不应包含过多的点（避开目录）
-        chapter_pattern = re.compile(r"^\s*(第[一二三四五六七八九十\d]+章\s+[^\n\.]{2,50})", re.MULTILINE)
+        # 匹配 "第 X 章" 格式，X 可以是数字或中文数字
+        chapter_pattern = re.compile(r"^\s*(第\s*[一二三四五六七八九十\d]+\s*章\s*[^\n\.]{2,60})", re.MULTILINE)
+        
+        def normalize_title(t):
+            return re.sub(r"[\s\d一二三四五六七八九十章\.,，。·\-_]", "", t)
+
+        last_chapter_num = 0
         
         for page_num in range(doc.page_count):
             page = doc.load_page(page_num)
             text = page.get_text()
             
-            # 过滤目录页：如果一页内出现过多匹配项，通常是目录
-            all_matches = list(chapter_pattern.finditer(text))
-            if len(all_matches) > 5:
+            # 目录页深度过滤
+            if "目录" in text[:200] or "CONTENTS" in text[:200].upper():
                 if current_chapter:
                     current_chapter.content += "\n" + text
-                    current_chapter.page_end = page_num + 1
-                    current_chapter.char_count = len(current_chapter.content)
                 continue
 
-            if not all_matches:
-                if current_chapter:
-                    current_chapter.content += "\n" + text
-                    current_chapter.page_end = page_num + 1
-                    current_chapter.char_count = len(current_chapter.content)
-                else:
-                    current_chapter = Chapter(
-                        chapter_id=str(uuid.uuid4()),
-                        title="前言",
-                        page_start=page_num + 1,
-                        page_end=page_num + 1,
-                        content=text,
-                        char_count=len(text)
-                    )
-            else:
-                last_idx = 0
-                for match in all_matches:
-                    start_idx = match.start()
+            lines = text.split('\n')
+            page_content_accum = ""
+            
+            for line in lines:
+                line = line.strip()
+                if not line: continue
+                
+                match = chapter_pattern.match(line)
+                is_real_heading = False
+                
+                if match:
                     title = match.group(1).strip()
-                    
-                    # 进一步过滤：如果标题包含过多连续的点，可能是目录项
-                    if "...." in text[start_idx:start_idx+100]:
-                        continue
-                        
-                    # 过滤掉与当前章节标题相同的页眉/页脚重复匹配
-                    if current_chapter and title == current_chapter.title:
-                        continue
+                    # 提取数字进行顺序校验
+                    num_match = re.search(r"([一二三四五六七八九十\d]+)", title)
+                    current_num = 0
+                    if num_match:
+                        # 简单转换或保留原样用于比较
+                        num_str = num_match.group(1)
+                        # 这里简单处理：如果是连续增长或相近，则可能是真标题
+                        is_real_heading = True 
 
+                    # 1. 长度校验
+                    if len(title) < 3 or len(title) > 60: is_real_heading = False
+                    
+                    # 2. 页眉/页脚校验：如果和当前章节标题高度相似，则是重复
+                    if current_chapter and normalize_title(title) == normalize_title(current_chapter.title):
+                        is_real_heading = False
+                        
+                    # 3. 目录项校验：后面紧跟数字或过多点
+                    if "...." in line or re.search(r"\s+\d+\s*$", line):
+                        is_real_heading = False
+
+                if is_real_heading:
+                    # 保存前一章
                     if current_chapter:
-                        current_chapter.content += "\n" + text[last_idx:start_idx]
+                        current_chapter.content += "\n" + page_content_accum
                         current_chapter.page_end = page_num + 1
                         current_chapter.char_count = len(current_chapter.content)
                         chapters.append(current_chapter)
                     
+                    # 开启新章
                     current_chapter = Chapter(
                         chapter_id=str(uuid.uuid4()),
                         title=title,
@@ -106,26 +117,30 @@ class ParserService:
                         content="",
                         char_count=0
                     )
-                    last_idx = start_idx
-                
-                if current_chapter:
-                    current_chapter.content += "\n" + text[last_idx:]
-                    current_chapter.char_count = len(current_chapter.content)
+                    page_content_accum = "" # 重置当前页积累
+                else:
+                    page_content_accum += "\n" + line
+
+            if current_chapter:
+                current_chapter.content += "\n" + page_content_accum
+                current_chapter.page_end = page_num + 1
 
         if current_chapter:
             chapters.append(current_chapter)
             
         doc.close()
-        # 最终去重：防止某些情况下产生的空章节或极短章节重复
+        
+        # 最终清洗：合并过短的章节（可能是误切的标题或装饰行）
         final_chapters = []
         for c in chapters:
-            if not final_chapters or c.title != final_chapters[-1].title:
+            if not final_chapters:
                 final_chapters.append(c)
-            else:
-                final_chapters[-1].content += "\n" + c.content
+            elif len(c.content) < 200 and c.title != "前言": # 如果内容过少，合并到上一章
+                final_chapters[-1].content += f"\n\n{c.title}\n{c.content}"
                 final_chapters[-1].page_end = c.page_end
-                final_chapters[-1].char_count = len(final_chapters[-1].content)
-        
+            else:
+                final_chapters.append(c)
+                
         return final_chapters
 
     @classmethod
@@ -136,8 +151,8 @@ class ParserService:
             
         chapters = []
         # 改进：Markdown 仅匹配一级标题 # ，或者匹配 第X章
-        # 且要求标题后紧跟空格，避免匹配像 ## 这样的子标题
-        chapter_pattern = re.compile(r"^(?:#\s+|第[一二三四五六七八九十\d]+章\s+)(.*)", re.MULTILINE)
+        # 且要求标题后紧跟空格，避免匹配像 ## 这样的子标题。同时兼容 "第2 章"
+        chapter_pattern = re.compile(r"^(?:#\s+|第[一二三四五六七八九十\d]+\s*章\s+)(.*)", re.MULTILINE)
         matches = list(chapter_pattern.finditer(text))
         
         if not matches:

@@ -9,6 +9,7 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
   const chartInstance = useRef(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
+  const [selectedEdge, setSelectedEdge] = useState(null)
   const [info, setInfo] = useState({ loading: true, nodes: 0, edges: 0, error: null })
 
   const fetchGraph = async () => {
@@ -80,7 +81,14 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
     }))
 
     const option = {
-      tooltip: { formatter: (p) => p.data.name || p.data.relation },
+      tooltip: {
+        formatter: (p) => {
+          if (p.dataType === 'edge') {
+            return `<b>${p.data.relation || '关系'}</b><br/>${p.data.description || '暂无描述'}`
+          }
+          return p.data.name || p.data.category || ''
+        },
+      },
       series: [
         {
           type: 'graph',
@@ -102,6 +110,11 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
     chartInstance.current.on('click', (params) => {
       if (params.dataType === 'node') {
         setSelectedNode(params.data)
+        setSelectedEdge(null)
+        setDrawerOpen(true)
+      } else if (params.dataType === 'edge') {
+        setSelectedEdge(params.data)
+        setSelectedNode(null)
         setDrawerOpen(true)
       }
     })
@@ -142,7 +155,7 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
       </div>
       <div ref={chartRef} style={{ flex: 1, minHeight: 400 }} />
       <Drawer
-        title={selectedNode?.name || '知识点详情'}
+        title={selectedNode?.name || (selectedEdge ? '关系详情' : '')}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         width={360}
@@ -153,6 +166,14 @@ export default function GraphPanel({ selectedBookId, showMerged, refreshFlag }) 
             <p><b>类别：</b>{selectedNode.category || '暂无'}</p>
             <p><b>章节：</b>{selectedNode.chapter || '暂无'}</p>
             <p><b>页码：</b>{selectedNode.page || '暂无'}</p>
+          </div>
+        )}
+        {selectedEdge && (
+          <div>
+            <p><b>关系类型：</b>{selectedEdge.relation || '暂无'}</p>
+            <p><b>描述：</b>{selectedEdge.description || '暂无'}</p>
+            <p><b>起点：</b>{selectedEdge.source || '暂无'}</p>
+            <p><b>终点：</b>{selectedEdge.target || '暂无'}</p>
           </div>
         )}
       </Drawer>

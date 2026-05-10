@@ -9,6 +9,8 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
   const [building, setBuilding] = useState({})
   const [deleting, setDeleting] = useState({})
 
+  const [uploadingFiles, setUploadingFiles] = useState([])
+
   const fetchBooks = async () => {
     try {
       const data = await listBooks()
@@ -22,20 +24,50 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
     fetchBooks()
   }, [refreshFlag])
 
-  const handleUpload = async ({ file }) => {
+  const uploadTimerRef = React.useRef(null)
+
+  // 处理批量上传的核心逻辑
+  const processUpload = async (files) => {
+    if (files.length === 0) return
+    
     setLoading(true)
     try {
-      const res = await uploadFile(file)
-      message.success('上传成功')
-      onUploadSuccess()
-      if (res.book?.textbook_id) {
-        await parseBook(res.book.textbook_id)
-        message.info('开始解析...')
-      }
+      const res = await uploadFile(files)
+      message.success(`成功上传 ${res.books?.length || 0} 本教材`)
+      
+      // 批量触发解析
+      const parseTasks = (res.books || []).map(book => {
+        if (book.textbook_id) return parseBook(book.textbook_id)
+        return Promise.resolve()
+      })
+      
+      await Promise.all(parseTasks)
+      message.info('已开始批量解析...')
+      
+      fetchBooks()
+      if (onUploadSuccess) onUploadSuccess()
     } catch (e) {
-      message.error(e)
+      message.error(`上传失败: ${e}`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleChange = (info) => {
+    const { fileList } = info
+    // 过滤出真正需要上传的文件对象
+    const rawFiles = fileList
+      .map(f => f.originFileObj)
+      .filter(f => f instanceof File)
+
+    // 使用定时器防抖，确保在一次拖拽/选择中的所有文件都被收集齐后再发送请求
+    if (rawFiles.length > 0) {
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current)
+      uploadTimerRef.current = setTimeout(() => {
+        processUpload(rawFiles)
+        // 清理当前上传列表
+        info.fileList.splice(0, info.fileList.length)
+      }, 300)
     }
   }
 
@@ -80,22 +112,24 @@ export default function TextbookPanel({ onSelectBook, onUploadSuccess, refreshFl
   return (
     <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ marginBottom: 12, whiteSpace: 'nowrap' }}>📚 教材管理</h3>
-      <Upload.Dragger 
-        customRequest={handleUpload} 
-        showUploadList={false} 
+      <Upload.Dragger
+        multiple
+        showUploadList={false}
         accept=".pdf,.md,.txt,.docx,.xlsx"
+        beforeUpload={() => false}
+        onChange={handleChange}
         style={{ marginBottom: 12 }}
       >
         <p className="ant-upload-drag-icon">
           <UploadOutlined />
         </p>
         <p className="ant-upload-text">拖拽或点击上传</p>
-        <p className="ant-upload-hint" style={{ fontSize: 12 }}>PDF / MD / TXT / Word / Excel</p>
+        <p className="ant-upload-hint" style={{ fontSize: 12 }}>支持批量上传 PDF / MD / TXT / Word / Excel</p>
       </Upload.Dragger>
 
-      <Button 
-        icon={<ReloadOutlined />} 
-        onClick={fetchBooks} 
+      <Button
+        icon={<ReloadOutlined />}
+        onClick={fetchBooks}
         style={{ marginBottom: 12, width: '100%' }}
         size="small"
       >

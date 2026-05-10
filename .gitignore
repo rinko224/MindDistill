@@ -70,8 +70,8 @@ sample_textbook.md
 sample_textbook_2.md
 
 # 运行时生成的数据文件
-backend/data/books.json
-backend/data/graphs.json
-backend/data/merged_graph.json
-backend/data/merge_decisions.json
-backend/data/merge_result.json
+backend/data/*.json
+backend/data/cache/
+
+# Debug 文件
+backend/debug_*

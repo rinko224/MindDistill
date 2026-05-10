@@ -15,9 +15,10 @@ client.interceptors.response.use(
 
 export default client
 
-export const uploadFile = (file) => {
+export const uploadFile = (files) => {
   const form = new FormData()
-  form.append('file', file)
+  const list = Array.isArray(files) ? files : [files]
+  list.forEach((file) => form.append('files', file))
   return client.post('/api/upload/', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })

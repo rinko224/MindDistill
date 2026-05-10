@@ -1,5 +1,6 @@
 import os
 import uuid
+from typing import List
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse
 
@@ -13,27 +14,31 @@ UPLOAD_DIR = "data/uploaded"
 
 
 @router.post("/")
-async def upload_file(file: UploadFile = File(...)):
-    book_id = f"book_{uuid.uuid4().hex[:8]}"
-    ext = os.path.splitext(file.filename)[1].lower()
-    save_path = os.path.join(UPLOAD_DIR, f"{book_id}{ext}")
+async def upload_file(files: List[UploadFile] = File(...)):
+    results = []
+    for file in files:
+        book_id = f"book_{uuid.uuid4().hex[:8]}"
+        ext = os.path.splitext(file.filename)[1].lower()
+        save_path = os.path.join(UPLOAD_DIR, f"{book_id}{ext}")
 
-    with open(save_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        with open(save_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
 
-    book = Textbook(
-        textbook_id=book_id,
-        filename=file.filename,
-        title=os.path.splitext(file.filename)[0],
-        total_pages=0,
-        total_chars=0,
-        format=ext.lstrip("."),
-        status="parsing",
-    )
-    StorageService.books[book_id] = book
+        book = Textbook(
+            textbook_id=book_id,
+            filename=file.filename,
+            title=os.path.splitext(file.filename)[0],
+            total_pages=0,
+            total_chars=0,
+            format=ext.lstrip("."),
+            status="parsing",
+        )
+        StorageService.books[book_id] = book
+        results.append(book)
+
     StorageService.save_all()
-    return {"success": True, "book": book}
+    return {"success": True, "books": results}
 
 
 @router.get("/")
@@ -46,7 +51,7 @@ async def list_uploads():
 async def delete_book(book_id: str):
     """
     删除教材及其相关数据
-    
+
     删除内容：
     - 从内存中移除教材数据
     - 删除上传的原始文件
@@ -57,24 +62,30 @@ async def delete_book(book_id: str):
         # 从内存中移除
         if book_id in StorageService.books:
             del StorageService.books[book_id]
-        
+
         # 从知识图谱中移除
         if book_id in StorageService.graphs:
             del StorageService.graphs[book_id]
-        
+
         # 删除上传的文件
         for file in os.listdir(UPLOAD_DIR):
             if file.startswith(book_id):
                 file_path = os.path.join(UPLOAD_DIR, file)
                 if os.path.isfile(file_path):
                     os.remove(file_path)
-                    
+
         # 删除向量索引
         RAGService.delete_book(book_id)
-        
+
+        # 删除提取缓存
+        import shutil
+        cache_path = os.path.join("data/cache/extract", book_id)
+        if os.path.exists(cache_path):
+            shutil.rmtree(cache_path)
+
         # 持久化保存
         StorageService.save_all()
-        
+
         return {
             "success": True,
             "message": f"教材 {book_id} 已删除"
